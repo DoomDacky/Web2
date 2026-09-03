@@ -1,0 +1,18 @@
+# Sistema operativo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editores
+.vscode/
+.idea/
+*.swp
+
+# Dependencias / build (por si se agregan luego)
+node_modules/
+dist/
+.vercel/
+
+# Logs
+*.log
+npm-debug.log*
