@@ -43,6 +43,19 @@ body{
 .nav-link.active {
     color: var(--primary-color);
 }
+
+/* --- SISTEMA DE VISTAS SPA --- */
+.view-module{
+    display: none; /* Todas las vistas ocultas por defecto */
+    animation: fadeIn 0.4s ease-in-out;
+}
+.view-module.active{
+    display: block; /* Sólo se muestra la vista activa */
+}
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
 .view-create-profile{
     display: flex;
     flex-direction: column;
@@ -155,7 +168,7 @@ button{
     object-fit: cover;
     cursor: pointer;
     border: 3px solid transparent;
-    transition: border-color 0.2s, border-color 0.2s;
+    transition: transform 0.2s, border-color 0.2s;
 }
 .avatar-option:hover{
     transform: scale(1.1);
@@ -182,9 +195,30 @@ button{
     font-size: 1.4rem;
     margin-bottom: 0.5rem;
 }
-#bio-preview{
+#bio-preview, .card-bio{
     font-size: 0.95rem;
     color: #64748b;
+}
+
+/* --- GALERÍA --- */
+.gallery-header{
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 2rem;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+.gallery-grid{
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 2rem;
+    padding: 0 2rem 2rem 2rem;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+.gallery-grid .card{
+    width: 100%;
 }
  
 @media (min-width: 768px) {

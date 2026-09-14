@@ -28,6 +28,11 @@ const dom = {
     previewAvatar: document.getElementById('avatar-preview'),
     previewHeader: document.getElementById('preview-header'),
     viewCreate: document.getElementById('view-create'),
+    // Módulo de Galería y navegación SPA
+    viewGallery: document.getElementById('view-gallery'),
+    navLinks: document.querySelectorAll('.nav-link'),
+    galleryContainer: document.getElementById('gallery-container'),
+    btnReloadGallery: document.getElementById('btn-reload-gallery'),
 };
  
 /**
@@ -159,6 +164,127 @@ const fetchGitHubData = async (username) => {
 };
 
 /**
+ * CONSUMO DE API INTERNA (Guardar en el servidor)
+ * Envía state.cardData al PHP, que lo agrega a api/tarjetas-usuarios.json.
+ */
+const saveCardToServer = async () => {
+    // Validación: no guardamos si no hay al menos un nombre
+    if (!state.cardData.name.trim()) {
+        alert('Por favor, ingresa un nombre para la tarjeta.');
+        return;
+    }
+
+    const btnSubmit = dom.form.querySelector('button[type="submit"]');
+    const textoOriginal = btnSubmit.textContent;
+
+    btnSubmit.textContent = 'Guardando en servidor...';
+    btnSubmit.disabled = true;
+
+    try {
+        const formData = new FormData();
+        formData.append('datos_tarjeta', JSON.stringify(state.cardData));
+
+        const response = await fetch('api/guardar-tarjeta.php', {
+            method: 'POST',
+            body: formData
+        });
+
+        // El PHP siempre responde JSON (éxito o error), así que lo parseamos directo
+        const result = await response.json();
+
+        if (!response.ok) {
+            // Lanzamos el error específico que nos mandó PHP
+            throw new Error(result.error || 'El servidor rechazó la petición.');
+        }
+
+        alert(result.message || '¡Tarjeta guardada con éxito!');
+    } catch (error) {
+        alert('Error: ' + error.message);
+        console.error('Error al guardar la tarjeta:', error);
+    } finally {
+        btnSubmit.textContent = textoOriginal;
+        btnSubmit.disabled = false;
+    }
+};
+
+/**
+ * GALERÍA (Consumo y Renderizado)
+ * Lee el JSON con todas las tarjetas guardadas y las pinta en la vista de Galería.
+ */
+const loadGalleryData = async () => {
+    dom.galleryContainer.innerHTML = '<p class="status-msg status-loading">Cargando tarjetas...</p>';
+
+    try {
+        // ?t=Date.now() evita que el navegador sirva una copia en caché del JSON
+        const response = await fetch(`api/tarjetas-usuarios.json?t=${Date.now()}`);
+
+        if (!response.ok) {
+            if (response.status === 404) throw new Error('Aún no hay tarjetas guardadas.');
+            throw new Error('Error al leer el archivo JSON.');
+        }
+
+        const tarjetas = await response.json();
+
+        if (!Array.isArray(tarjetas) || tarjetas.length === 0) {
+            throw new Error('La galería está vacía.');
+        }
+
+        dom.galleryContainer.innerHTML = '';
+
+        // De la más reciente a la más antigua
+        tarjetas.reverse().forEach(tarjeta => {
+            const card = document.createElement('article');
+            card.className = 'card';
+
+            const header = document.createElement('div');
+            header.className = 'card-header';
+            header.style.backgroundColor = tarjeta.color;
+
+            const avatar = document.createElement('img');
+            avatar.className = 'avatar';
+            avatar.src = tarjeta.avatarUrl;
+            avatar.alt = `Avatar de ${tarjeta.name}`;
+            // Respetamos el encuadre con el que se guardó la tarjeta
+            avatar.style.objectPosition = tarjeta.avatarPos || ENCUADRE_POR_DEFECTO;
+
+            const body = document.createElement('div');
+            body.className = 'card-body';
+            const name = document.createElement('h3');
+            name.textContent = tarjeta.name;
+            const bio = document.createElement('p');
+            bio.className = 'card-bio';
+            bio.textContent = tarjeta.bio;
+            body.append(name, bio);
+
+            card.append(header, avatar, body);
+            dom.galleryContainer.appendChild(card);
+        });
+    } catch (error) {
+        dom.galleryContainer.innerHTML = `<p class="status-msg status-error">${error.message}</p>`;
+    }
+};
+
+/**
+ * ENRUTADOR BASADO EN HASH (SPA)
+ * Cambia entre #/crear y #/galeria sin recargar la página.
+ */
+const handleRouting = () => {
+    const currentHash = window.location.hash || '#/crear';
+    const enGaleria = currentHash === '#/galeria';
+
+    // Resalta el enlace activo del menú
+    dom.navLinks.forEach(link => {
+        link.classList.toggle('active', link.getAttribute('href') === currentHash);
+    });
+
+    // Sólo la vista con .active se muestra (ver .view-module en el CSS)
+    dom.viewCreate.classList.toggle('active', !enGaleria);
+    dom.viewGallery.classList.toggle('active', enGaleria);
+
+    if (enGaleria) loadGalleryData();
+};
+
+/**
  * EVENTOS MANUALES
  */
 const setupManualEvents = () => {
@@ -179,6 +305,7 @@ const setupManualEvents = () => {
  
     dom.form.addEventListener('submit', (e) => {
         e.preventDefault(); // Evitar recargar la página al enviar el formulario
+        saveCardToServer();
     });
 };
  
@@ -199,5 +326,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     })
     renderCard(); // Renderizar la tarjeta inicial
+
+    // Enrutamiento SPA y botón "Actualizar Galería"
+    window.addEventListener('hashchange', handleRouting);
+    dom.btnReloadGallery.addEventListener('click', loadGalleryData);
+    handleRouting(); // Mostrar la vista que corresponde al hash actual
 });
  
