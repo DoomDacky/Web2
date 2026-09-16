@@ -164,6 +164,42 @@ const fetchGitHubData = async (username) => {
 };
 
 /**
+ * RESPALDO LOCAL (localStorage) — NUEVO (SP2-1)
+ * El guardado "de verdad" lo hace `api/guardar-tarjeta.php`, pero la página
+ * también se publica en un hosting estático (Vercel) que NO ejecuta PHP.
+ * Cuando no hay servidor que responda, la tarjeta se queda en el navegador
+ * bajo esta clave y la Galería la lee de ahí.
+ */
+const CLAVE_RESPALDO = 'tarjetas-usuarios';
+
+const leerRespaldoLocal = () => {
+    try {
+        const guardado = JSON.parse(localStorage.getItem(CLAVE_RESPALDO));
+        return Array.isArray(guardado) ? guardado : [];
+    } catch (error) {
+        console.error('No se pudo leer el respaldo local:', error);
+        return [];
+    }
+};
+
+const guardarRespaldoLocal = (tarjeta) => {
+    // Misma forma de `id` y `createdAt` que usa el PHP, para que la Galería
+    // pueda mezclar las tarjetas del servidor con las del navegador sin notar diferencia
+    const ahora = new Date();
+    const fecha = ahora.toLocaleString('sv-SE'); // 'sv-SE' da el formato YYYY-MM-DD HH:MM:SS
+
+    const tarjetas = leerRespaldoLocal();
+    tarjetas.push({
+        ...tarjeta,
+        id: 'user_' + ahora.getTime().toString(16),
+        createdAt: fecha,
+        origen: 'local'
+    });
+
+    localStorage.setItem(CLAVE_RESPALDO, JSON.stringify(tarjetas));
+};
+
+/**
  * CONSUMO DE API INTERNA (Guardar en el servidor)
  * Envía state.cardData al PHP, que lo agrega a api/tarjetas-usuarios.json.
  */
@@ -184,10 +220,26 @@ const saveCardToServer = async () => {
         const formData = new FormData();
         formData.append('datos_tarjeta', JSON.stringify(state.cardData));
 
-        const response = await fetch('api/guardar-tarjeta.php', {
-            method: 'POST',
-            body: formData
-        });
+        // MODIFICADO (SP2-1): la petición puede fallar por red o caer en un
+        // hosting sin PHP, así que la aislamos para poder distinguir los casos.
+        let response = null;
+        try {
+            response = await fetch('api/guardar-tarjeta.php', {
+                method: 'POST',
+                body: formData
+            });
+        } catch (errorDeRed) {
+            console.error('No hubo respuesta del servidor:', errorDeRed);
+        }
+
+        // Sin PHP detrás, el .php se sirve como texto plano o responde 404:
+        // en ningún caso llega JSON. Ahí guardamos en el navegador.
+        const tipo = response ? (response.headers.get('content-type') || '') : '';
+        if (!tipo.includes('application/json')) {
+            guardarRespaldoLocal(state.cardData);
+            alert('Este servidor no ejecuta PHP; la tarjeta se guardó en este navegador.');
+            return;
+        }
 
         // El PHP siempre responde JSON (éxito o error), así que lo parseamos directo
         const result = await response.json();
@@ -214,54 +266,61 @@ const saveCardToServer = async () => {
 const loadGalleryData = async () => {
     dom.galleryContainer.innerHTML = '<p class="status-msg status-loading">Cargando tarjetas...</p>';
 
+    // MODIFICADO (SP2-1): la galería junta lo que haya en el servidor con el
+    // respaldo del navegador, así se ve igual en Apache local y en Vercel.
+    let tarjetas = [];
+
     try {
         // ?t=Date.now() evita que el navegador sirva una copia en caché del JSON
         const response = await fetch(`api/tarjetas-usuarios.json?t=${Date.now()}`);
 
-        if (!response.ok) {
-            if (response.status === 404) throw new Error('Aún no hay tarjetas guardadas.');
-            throw new Error('Error al leer el archivo JSON.');
+        // Si no hay JSON (404 en el hosting estático) seguimos con el respaldo
+        if (response.ok) {
+            const datos = await response.json();
+            if (Array.isArray(datos)) tarjetas = datos;
         }
-
-        const tarjetas = await response.json();
-
-        if (!Array.isArray(tarjetas) || tarjetas.length === 0) {
-            throw new Error('La galería está vacía.');
-        }
-
-        dom.galleryContainer.innerHTML = '';
-
-        // De la más reciente a la más antigua
-        tarjetas.reverse().forEach(tarjeta => {
-            const card = document.createElement('article');
-            card.className = 'card';
-
-            const header = document.createElement('div');
-            header.className = 'card-header';
-            header.style.backgroundColor = tarjeta.color;
-
-            const avatar = document.createElement('img');
-            avatar.className = 'avatar';
-            avatar.src = tarjeta.avatarUrl;
-            avatar.alt = `Avatar de ${tarjeta.name}`;
-            // Respetamos el encuadre con el que se guardó la tarjeta
-            avatar.style.objectPosition = tarjeta.avatarPos || ENCUADRE_POR_DEFECTO;
-
-            const body = document.createElement('div');
-            body.className = 'card-body';
-            const name = document.createElement('h3');
-            name.textContent = tarjeta.name;
-            const bio = document.createElement('p');
-            bio.className = 'card-bio';
-            bio.textContent = tarjeta.bio;
-            body.append(name, bio);
-
-            card.append(header, avatar, body);
-            dom.galleryContainer.appendChild(card);
-        });
     } catch (error) {
-        dom.galleryContainer.innerHTML = `<p class="status-msg status-error">${error.message}</p>`;
+        console.error('No se pudo leer el JSON del servidor:', error);
     }
+
+    tarjetas = tarjetas.concat(leerRespaldoLocal());
+
+    if (tarjetas.length === 0) {
+        dom.galleryContainer.innerHTML =
+            '<p class="status-msg status-error">Aún no hay tarjetas guardadas.</p>';
+        return;
+    }
+
+    dom.galleryContainer.innerHTML = '';
+
+    // De la más reciente a la más antigua
+    tarjetas.reverse().forEach(tarjeta => {
+        const card = document.createElement('article');
+        card.className = 'card';
+
+        const header = document.createElement('div');
+        header.className = 'card-header';
+        header.style.backgroundColor = tarjeta.color;
+
+        const avatar = document.createElement('img');
+        avatar.className = 'avatar';
+        avatar.src = tarjeta.avatarUrl;
+        avatar.alt = `Avatar de ${tarjeta.name}`;
+        // Respetamos el encuadre con el que se guardó la tarjeta
+        avatar.style.objectPosition = tarjeta.avatarPos || ENCUADRE_POR_DEFECTO;
+
+        const body = document.createElement('div');
+        body.className = 'card-body';
+        const name = document.createElement('h3');
+        name.textContent = tarjeta.name;
+        const bio = document.createElement('p');
+        bio.className = 'card-bio';
+        bio.textContent = tarjeta.bio;
+        body.append(name, bio);
+
+        card.append(header, avatar, body);
+        dom.galleryContainer.appendChild(card);
+    });
 };
 
 /**

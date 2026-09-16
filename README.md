@@ -22,6 +22,10 @@ tarjeta de perfil y ver los cambios reflejados en tiempo real.
   guardadas (de la más reciente a la más antigua), con botón para recargar.
 - **Enrutador por hash**: `#/crear` y `#/galeria` cambian de vista sin recargar
   la página.
+- **Respaldo local**: si la respuesta de `api/guardar-tarjeta.php` no es JSON
+  (porque el hosting no ejecuta PHP), la tarjeta se guarda en `localStorage`
+  bajo la clave `tarjetas-usuarios` y la Galería la muestra junto con las del
+  servidor.
 
 ## Estructura
 
@@ -50,7 +54,15 @@ PHP necesita permiso de escritura en la carpeta `api/` para crear
 `tarjetas-usuarios.json`; si no lo tiene, el guardado responde
 `Error de permisos`.
 
+## Publicación en Vercel
+
+El repositorio está conectado a Vercel (<https://web2-sfg7.vercel.app>), que
+publica la rama `main` como sitio estático. Vercel **no ejecuta PHP**, así que
+ahí `api/guardar-tarjeta.php` nunca responde: el guardado y la Galería caen al
+respaldo en `localStorage` descrito arriba. Con Apache/XAMPP en local sí se usa
+el PHP y el JSON del servidor.
+
 ## Tecnologías
 
 HTML5, CSS3 y JavaScript ES6+ en el cliente; PHP (sin frameworks) para el
-guardado en servidor.
+guardado en servidor, con respaldo en `localStorage` del navegador.
