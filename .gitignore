@@ -16,3 +16,6 @@ dist/
 # Logs
 *.log
 npm-debug.log*
+
+# Datos generados por la app (tarjetas guardadas desde el formulario)
+api/tarjetas-usuarios.json
